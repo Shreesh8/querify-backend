@@ -1,88 +1,64 @@
 """
-db/models/dataset.py
-
-Dataset and related models.
-One file per domain — easier to navigate than one giant models.py.
+api/dependencies/dataset.py
+Reusable dependencies for dataset access.
 """
 
+import asyncio
 import uuid
-from datetime import datetime
-from typing import Optional
+from pathlib import Path
+from typing import Tuple
 
-from sqlalchemy import BigInteger, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+import pandas as pd
+from fastapi import Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.base import Base, TimestampMixin, UUIDMixin
-
-
-class Dataset(Base, UUIDMixin, TimestampMixin):
-    """
-    Stores metadata about an uploaded file.
-    The actual file lives on disk under uploads/.
-    The parsed data is re-read from disk on each analytics request
-    (stateless — no dataframe stored in memory between requests).
-    """
-    __tablename__ = "datasets"
-
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    original_filename: Mapped[str] = mapped_column(String(500), nullable=False)
-    file_path: Mapped[str] = mapped_column(String(1000), nullable=False)
-    file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    file_type: Mapped[str] = mapped_column(String(10), nullable=False)   # csv | xlsx
-
-    # Parsed metadata — populated on upload
-    row_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    column_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    columns_metadata: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    # e.g. {"col_name": {"dtype": "float64", "null_count": 3, "sample": [1.2, 3.4]}}
-
-    health_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="processing")
-    # processing | ready | error
-
-    # Relationships
-    chat_messages: Mapped[list["ChatMessage"]] = relationship(back_populates="dataset")
-    forecasts: Mapped[list["Forecast"]] = relationship(back_populates="dataset")
+from app.api.dependencies.auth import get_current_user
+from app.db.models.dataset import Dataset
+from app.db.session import get_db
 
 
-class ChatMessage(Base, UUIDMixin, TimestampMixin):
-    """One turn of the NL query conversation."""
-    __tablename__ = "chat_messages"
+async def get_dataset_or_404(
+    dataset_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: uuid.UUID = Depends(get_current_user),
+) -> Dataset:
+    result = await db.execute(select(Dataset).where(Dataset.id == dataset_id))
+    dataset = result.scalar_one_or_none()
 
-    dataset_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), index=True
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
-    role: Mapped[str] = mapped_column(String(10), nullable=False)   # user | assistant
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    if not dataset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found.")
 
-    # Structured result from the analytics engine (Plotly JSON + data)
-    result_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    # Operation spec that was executed (audit trail)
-    operation_spec: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    execution_time_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    if dataset.user_id != current_user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied.")
 
-    dataset: Mapped["Dataset"] = relationship(back_populates="chat_messages")
+    return dataset
 
 
-class Forecast(Base, UUIDMixin, TimestampMixin):
-    """Stores a forecasting run and its output."""
-    __tablename__ = "forecasts"
+def _read_file(file_path: Path, file_type: str) -> pd.DataFrame:
+    if file_type == "csv":
+        return pd.read_csv(file_path)
+    return pd.read_excel(file_path)
 
-    dataset_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("datasets.id", ondelete="CASCADE"), index=True
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    target_column: Mapped[str] = mapped_column(String(255), nullable=False)
-    date_column: Mapped[str] = mapped_column(String(255), nullable=False)
-    periods: Mapped[int] = mapped_column(Integer, nullable=False)
-    frequency: Mapped[str] = mapped_column(String(10), default="D")   # D | W | M
 
-    # Prophet output stored as JSON (chart-ready)
-    forecast_data: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    model_metrics: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="pending")
+async def load_dataset_df(
+    dataset: Dataset = Depends(get_dataset_or_404),
+) -> Tuple[Dataset, pd.DataFrame]:
+    file_path = Path(dataset.file_path)
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dataset file not found on disk.",
+        )
 
-    dataset: Mapped["Dataset"] = relationship(back_populates="forecasts")
+    try:
+        df = await asyncio.get_event_loop().run_in_executor(
+            None, _read_file, file_path, dataset.file_type
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load dataset file: {str(e)}",
+        )
+
+    return dataset, df
