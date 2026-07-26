@@ -13,7 +13,7 @@ from typing import Any, Dict
 
 from app.core.exceptions import AIServiceError
 from app.core.logging import get_logger
-from app.services.ai.gemini_client import GeminiClient
+from app.services.ai.groq_client import GroqClient
 from app.services.ai.prompt_builder import PromptBuilder
 
 logger = get_logger(__name__)
@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 class InsightsService:
 
     def __init__(self):
-        self.gemini = GeminiClient()
+        self.groq = GroqClient()
         self.prompt_builder = PromptBuilder()
 
     async def generate_insights(
@@ -38,7 +38,7 @@ class InsightsService:
         prompt = self.prompt_builder.build_insights_prompt(analytics_data, dataset_name)
 
         try:
-            raw_text = await self.gemini.get_insights(prompt)
+            raw_text = await self.groq.get_insights(prompt)
             parsed = self._parse_insights_response(raw_text)
         except Exception as e:
             logger.warning("ai_insights_fallback", error=str(e), dataset_id=dataset_id)

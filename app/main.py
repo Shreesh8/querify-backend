@@ -17,7 +17,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import analytics, chat, datasets, forecast, insights
+from app.api.routes import analytics, billing, chat, datasets, forecast, insights
 from app.core.config import settings
 from app.core.exceptions import (
     AIServiceError,
@@ -144,6 +144,7 @@ def create_app() -> FastAPI:
     # All routes live under /api/v1 — ready for v2 without breaking changes
     prefix = "/api/v1"
     app.include_router(datasets.router, prefix=prefix)
+    app.include_router(billing.router, prefix=prefix)
     app.include_router(analytics.router, prefix=prefix)
     app.include_router(chat.router, prefix=prefix)
     app.include_router(insights.router, prefix=prefix)

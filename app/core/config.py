@@ -37,8 +37,11 @@ class Settings(BaseSettings):
     DATABASE_URL_SYNC: str    # sync URL   (alembic migrations)
 
     # ── AI ────────────────────────────────────────────────────
-    GEMINI_API_KEY: str
+    GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-1.5-flash"
+    GROQ_API_KEY: str
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    ADMIN_SECRET_KEY: str = "querify-admin-secret"
 
     # ── File uploads ──────────────────────────────────────────
     UPLOAD_DIR: str = "uploads"

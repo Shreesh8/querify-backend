@@ -1,23 +1,19 @@
 """
 api/dependencies/auth.py
-
-FastAPI dependency for JWT authentication.
-
-Usage in any route:
-    async def my_route(current_user_id: uuid.UUID = Depends(get_current_user)):
-
-Since the frontend (Lovable) handles auth, we only verify the JWT
-and return the user_id. No user lookup from DB needed unless you
-want to check if the user still exists.
+Firebase token verification.
 """
 
 import uuid
 from typing import Optional
-
+import firebase_admin
+from firebase_admin import credentials, auth as firebase_auth
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.core.security import decode_access_token
+# Initialize Firebase Admin SDK once
+if not firebase_admin._apps:
+    cred = credentials.Certificate("/home/ec2-user/querify-backend/firebase-service-account.json")
+    firebase_admin.initialize_app(cred)
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -25,44 +21,33 @@ bearer_scheme = HTTPBearer(auto_error=False)
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
 ) -> uuid.UUID:
-    """
-    Decode JWT from Authorization: Bearer <token> header.
-    Raises 401 if token is missing or invalid.
-    """
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization header missing.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    user_id_str = decode_access_token(credentials.credentials)
-    if not user_id_str:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
     try:
-        return uuid.UUID(user_id_str)
-    except ValueError:
+        decoded = firebase_auth.verify_id_token(credentials.credentials)
+        uid = decoded["uid"]
+        # Convert Firebase UID to UUID5 (deterministic, consistent)
+        return uuid.uuid5(uuid.NAMESPACE_URL, uid)
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token subject is not a valid UUID.",
+            detail=f"Invalid or expired token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
 
 async def get_optional_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
 ) -> Optional[uuid.UUID]:
-    """Non-raising variant — returns None if unauthenticated."""
     if not credentials:
         return None
-    user_id_str = decode_access_token(credentials.credentials)
-    if not user_id_str:
-        return None
     try:
-        return uuid.UUID(user_id_str)
-    except ValueError:
+        decoded = firebase_auth.verify_id_token(credentials.credentials)
+        uid = decoded["uid"]
+        return uuid.uuid5(uuid.NAMESPACE_URL, uid)
+    except Exception:
         return None

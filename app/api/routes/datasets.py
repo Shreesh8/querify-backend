@@ -111,5 +111,11 @@ async def delete_dataset(
     db: AsyncSession = Depends(get_db),
 ):
     from pathlib import Path
+    from sqlalchemy import delete as sql_delete
+    from app.db.models.dataset import ChatMessage, Forecast
+    # Delete all related records first (dataset_id is NOT NULL on both)
+    await db.execute(sql_delete(ChatMessage).where(ChatMessage.dataset_id == dataset.id))
+    await db.execute(sql_delete(Forecast).where(Forecast.dataset_id == dataset.id))
     Path(dataset.file_path).unlink(missing_ok=True)
     await db.delete(dataset)
+    await db.commit()

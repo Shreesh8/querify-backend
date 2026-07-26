@@ -1,13 +1,13 @@
 """
-services/ai/gemini_client.py
-Using google-generativeai (compatible with Python 3.8)
+services/ai/groq_client.py
+Groq-backed client matching GeminiClient's interface
+(get_operation_spec, get_insights, _extract_json).
 """
-
 import json
 import re
 from typing import Any, Dict
 
-import google.generativeai as genai
+from groq import Groq
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.core.config import settings
@@ -17,11 +17,10 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-class GeminiClient:
-
+class GroqClient:
     def __init__(self):
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        self.model = genai.GenerativeModel(settings.GEMINI_MODEL)
+        self.client = Groq(api_key=settings.GROQ_API_KEY)
+        self.model = settings.GROQ_MODEL
 
     @retry(
         retry=retry_if_exception_type(Exception),
@@ -31,31 +30,29 @@ class GeminiClient:
     )
     async def get_operation_spec(self, prompt: str) -> Dict[str, Any]:
         try:
-            response = await self.model.generate_content_async(
-                prompt,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.1,
-                    max_output_tokens=512,
-                )
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=512,
             )
-            return self._extract_json(response.text)
+            return self._extract_json(response.choices[0].message.content)
         except Exception as e:
-            logger.error("gemini_call_failed", error=str(e))
+            logger.error("groq_call_failed", error=str(e))
             raise
 
     async def get_insights(self, prompt: str) -> str:
         try:
-            response = await self.model.generate_content_async(
-                prompt,
-                generation_config=genai.GenerationConfig(
-                    temperature=0.4,
-                    max_output_tokens=1500,
-                )
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.4,
+                max_tokens=1500,
             )
-            return response.text
+            return response.choices[0].message.content
         except Exception as e:
-            logger.error("gemini_insights_failed", error=str(e))
-            raise AIServiceError(f"Gemini insights call failed: {str(e)}")
+            logger.error("groq_insights_failed", error=str(e))
+            raise AIServiceError(f"Groq insights call failed: {str(e)}")
 
     @staticmethod
     def _extract_json(text: str) -> Dict[str, Any]:
@@ -71,6 +68,6 @@ class GeminiClient:
             except json.JSONDecodeError:
                 pass
         raise AIServiceError(
-            "Gemini returned non-parseable JSON.",
+            "Groq returned non-parseable JSON.",
             detail={"raw_response": text[:500]},
         )

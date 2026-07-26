@@ -19,15 +19,33 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 ALLOWED_OPERATIONS_DESCRIPTION = """
-ALLOWED OPERATIONS (you MUST use one of these):
-- group_aggregate: group by a column and aggregate another
-- filter_sort: filter rows by a condition
-- top_n: get top N rows sorted by a column
-- time_series: aggregate a value over time periods
-- value_counts: count occurrences of each category
-- describe: summary statistics for a column
-- correlation: correlation between two numeric columns
-- pivot: pivot table aggregation
+ALLOWED OPERATIONS (you MUST use exactly one, with EXACTLY these field names):
+
+1. group_aggregate:
+{"operation": "group_aggregate", "group_by": "<column>", "aggregate_column": "<column>", "aggregate_func": "sum|mean|count|max|min|median"}
+
+2. filter_sort:
+{"operation": "filter_sort", "filter_column": "<column>", "filter_op": "eq|ne|gt|gte|lt|lte|contains", "filter_value": <value>, "sort_by": "<column>", "sort_order": "asc|desc"}
+
+3. top_n:
+{"operation": "top_n", "sort_column": "<column>", "n": <int>, "sort_order": "asc|desc"}
+
+4. time_series:
+{"operation": "time_series", "date_column": "<column>", "value_column": "<column>", "frequency": "D|W|M|Q|Y"}
+
+5. value_counts:
+{"operation": "value_counts", "column": "<column>"}
+
+6. describe:
+{"operation": "describe", "column": "<column>"}
+
+7. correlation:
+{"operation": "correlation", "col_x": "<column>", "col_y": "<column>"}
+
+8. pivot:
+{"operation": "pivot", "index_column": "<column>", "columns_column": "<column>", "values_column": "<column>", "aggregate_func": "sum|mean|count|max|min|median"}
+
+You MUST use the EXACT field names shown above for the chosen operation. Do not omit any required field. Do not invent alternate field names.
 """
 
 

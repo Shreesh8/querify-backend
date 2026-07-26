@@ -1,3 +1,4 @@
+from typing import List, Optional
 """
 db/models/dataset.py
 SQLAlchemy ORM models.
@@ -30,8 +31,8 @@ class Dataset(Base, UUIDMixin, TimestampMixin):
     health_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="processing")
 
-    chat_messages: Mapped[list["ChatMessage"]] = relationship(back_populates="dataset")
-    forecasts: Mapped[list["Forecast"]] = relationship(back_populates="dataset")
+    chat_messages: Mapped[List["ChatMessage"]] = relationship(back_populates="dataset")
+    forecasts: Mapped[List["Forecast"]] = relationship(back_populates="dataset")
 
 
 class ChatMessage(Base, UUIDMixin, TimestampMixin):
@@ -66,3 +67,24 @@ class Forecast(Base, UUIDMixin, TimestampMixin):
     status: Mapped[str] = mapped_column(String(20), default="pending")
 
     dataset: Mapped["Dataset"] = relationship(back_populates="forecasts")
+
+
+class UserUsage(Base, UUIDMixin, TimestampMixin):
+    __tablename__ = "user_usage"
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    month: Mapped[str] = mapped_column(String(7), nullable=False)  # "2026-07"
+    query_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    forecast_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    analytics_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    dataset_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class UserLimit(Base, UUIDMixin, TimestampMixin):
+    __tablename__ = "user_limits"
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, unique=True, index=True)
+    plan: Mapped[str] = mapped_column(String(20), default="free", nullable=False)
+    query_limit: Mapped[int] = mapped_column(Integer, default=60, nullable=False)
+    forecast_limit: Mapped[int] = mapped_column(Integer, default=10, nullable=False)
+    analytics_limit: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
+    dataset_limit: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
