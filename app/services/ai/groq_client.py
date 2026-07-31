@@ -1,6 +1,6 @@
 """
 services/ai/groq_client.py
-Groq-backed client matching GeminiClient's interface
+Groq-backed AI client (interface originally modeled after a prior Gemini-based client)
 (get_operation_spec, get_insights, _extract_json).
 """
 import json
