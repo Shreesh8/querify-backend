@@ -35,4 +35,7 @@ uploads/*
 # Database
 *.db
 *.sqlite
+
+# Secrets
 firebase-service-account.json
+*.pem
